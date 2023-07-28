@@ -24,18 +24,21 @@ export 'package:video_player_platform_interface/video_player_platform_interface.
 
 export 'src/closed_caption_file.dart';
 
-VideoPlayerPlatform? _lastVideoPlayerPlatform;
+// TODO: check the logic!!!
+// VideoPlayerPlatform? _lastVideoPlayerPlatform;
 
-VideoPlayerPlatform get _videoPlayerPlatform {
-  final VideoPlayerPlatform currentInstance = VideoPlayerPlatform.instance;
-  if (_lastVideoPlayerPlatform != currentInstance) {
-    // This will clear all open videos on the platform when a full restart is
-    // performed.
-    currentInstance.init();
-    _lastVideoPlayerPlatform = currentInstance;
-  }
-  return currentInstance;
-}
+// VideoPlayerPlatform get _videoPlayerPlatform {
+//   final VideoPlayerPlatform currentInstance = VideoPlayerPlatform.instance;
+//   if (_lastVideoPlayerPlatform != currentInstance) {
+//     // This will clear all open videos on the platform when a full restart is
+//     // performed.
+//     currentInstance.init();
+//     _lastVideoPlayerPlatform = currentInstance;
+//   }
+//   return currentInstance;
+// }
+
+late VideoPlayerPlatform _videoPlayerPlatform;
 
 /// The duration, current position, buffering state, error state and settings
 /// of a [VideoPlayerController].
@@ -278,6 +281,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
         dataSourceType = DataSourceType.asset,
         formatHint = null,
         httpHeaders = const <String, String>{},
+        useCache = false,
+        cacheKey = null,
         super(const VideoPlayerValue(duration: Duration.zero));
 
   /// Constructs a [VideoPlayerController] playing a network video.
@@ -296,6 +301,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
     Future<ClosedCaptionFile>? closedCaptionFile,
     this.videoPlayerOptions,
     this.httpHeaders = const <String, String>{},
+    this.useCache = false,
+    this.cacheKey,
   })  : _closedCaptionFileFuture = closedCaptionFile,
         dataSourceType = DataSourceType.network,
         package = null,
@@ -316,6 +323,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
     Future<ClosedCaptionFile>? closedCaptionFile,
     this.videoPlayerOptions,
     this.httpHeaders = const <String, String>{},
+    this.useCache = false,
+    this.cacheKey,
   })  : _closedCaptionFileFuture = closedCaptionFile,
         dataSource = url.toString(),
         dataSourceType = DataSourceType.network,
@@ -335,6 +344,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
         dataSourceType = DataSourceType.file,
         package = null,
         formatHint = null,
+        useCache = false,
+        cacheKey = null,
         super(const VideoPlayerValue(duration: Duration.zero));
 
   /// Constructs a [VideoPlayerController] playing a video from a contentUri.
@@ -351,7 +362,15 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
         package = null,
         formatHint = null,
         httpHeaders = const <String, String>{},
+        useCache = false,
+        cacheKey = null,
         super(const VideoPlayerValue(duration: Duration.zero));
+
+  /// The maximum cache size to keep on disk in bytes.
+  static int _maxCacheSize = 100 * 1024 * 1024;
+
+  /// The maximum size of each individual file in bytes.
+  static int _maxCacheFileSize = 10 * 1024 * 1024;
 
   /// The URI to the video file. This will be in different formats depending on
   /// the [DataSourceType] of the original video.
@@ -373,6 +392,12 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
   /// Provide additional configuration options (optional). Like setting the audio mode to mix
   final VideoPlayerOptions? videoPlayerOptions;
 
+  /// Use cache for this data source or not. Used only for network data source.
+  final bool? useCache;
+
+  /// The cache key for this data source. Used only for network data source.
+  final String? cacheKey;
+
   /// Only set for [asset] videos. The package that the asset was loaded from.
   final String? package;
 
@@ -384,6 +409,9 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
   StreamSubscription<dynamic>? _eventSubscription;
   _VideoAppLifeCycleObserver? _lifeCycleObserver;
 
+  static Completer<void>? _pluginInitializingCompleter;
+  Completer<void>? _initializingCompleter;
+
   /// The id of a texture that hasn't been initialized.
   @visibleForTesting
   static const int kUninitializedTextureId = -1;
@@ -394,8 +422,30 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
   @visibleForTesting
   int get textureId => _textureId;
 
+  /// Set the cache size in bytes. Default is maxSize of `100 * 1024 * 1024`
+  /// and maxFileSize of `10 * 1024 * 1024`.
+  ///
+  /// Cache used only for network data source.
+  ///
+  /// Throws StateError if you try to set the cache size twice. You can only set it once.
+  static void setCacheSize(int maxSize, int maxFileSize) {
+    assert(maxSize > 0);
+    assert(maxFileSize > 0);
+
+    if (_pluginInitializingCompleter != null) {
+      throw StateError(
+        "You can only set the VideoPlayerController cache size once.",
+      );
+    }
+
+    _maxCacheSize = maxSize;
+    _maxCacheFileSize = maxFileSize;
+  }
+
   /// Attempts to open the given [dataSource] and load metadata about the video.
   Future<void> initialize() async {
+    await _ensureVideoPluginInitialized();
+
     final bool allowBackgroundPlayback =
         videoPlayerOptions?.allowBackgroundPlayback ?? false;
     if (!allowBackgroundPlayback) {
@@ -418,6 +468,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
           uri: dataSource,
           formatHint: formatHint,
           httpHeaders: httpHeaders,
+          useCache: useCache,
+          cacheKey: cacheKey,
         );
       case DataSourceType.file:
         dataSourceDescription = DataSource(
@@ -440,7 +492,7 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
     _textureId = (await _videoPlayerPlatform.create(dataSourceDescription)) ??
         kUninitializedTextureId;
     _creatingCompleter!.complete(null);
-    final Completer<void> initializingCompleter = Completer<void>();
+    _initializingCompleter = Completer<void>();
 
     // Apply the web-specific options
     if (kIsWeb && videoPlayerOptions?.webOptions != null) {
@@ -466,16 +518,16 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
             isCompleted: false,
           );
           assert(
-            !initializingCompleter.isCompleted,
+            !_initializingCompleter!.isCompleted,
             'VideoPlayerController already initialized. This is typically a '
             'sign that an implementation of the VideoPlayerPlatform '
             '(${_videoPlayerPlatform.runtimeType}) has a bug and is sending '
             'more than one initialized event per instance.',
           );
-          if (initializingCompleter.isCompleted) {
+          if (_initializingCompleter!.isCompleted) {
             throw StateError('VideoPlayerController already initialized');
           }
-          initializingCompleter.complete(null);
+          _initializingCompleter!.complete(null);
           _applyLooping();
           _applyVolume();
           _applyPlayPause();
@@ -512,15 +564,30 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
       final PlatformException e = obj as PlatformException;
       value = VideoPlayerValue.erroneous(e.message!);
       _timer?.cancel();
-      if (!initializingCompleter.isCompleted) {
-        initializingCompleter.completeError(obj);
+      if (!_initializingCompleter!.isCompleted) {
+        _initializingCompleter!.completeError(obj);
       }
     }
 
     _eventSubscription = _videoPlayerPlatform
         .videoEventsFor(_textureId)
         .listen(eventListener, onError: errorListener);
-    return initializingCompleter.future;
+    return _initializingCompleter!.future;
+  }
+
+  Future<void> _ensureVideoPluginInitialized() async {
+    if (_pluginInitializingCompleter != null) {
+      return _pluginInitializingCompleter!.future;
+    }
+
+    _pluginInitializingCompleter = Completer();
+
+    await VideoPlayerPlatform.instance.init(_maxCacheSize, _maxCacheFileSize);
+    _pluginInitializingCompleter!.complete(null);
+
+    _videoPlayerPlatform = VideoPlayerPlatform.instance;
+
+    return _pluginInitializingCompleter!.future;
   }
 
   @override
@@ -537,6 +604,12 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
         await _eventSubscription?.cancel();
         await _videoPlayerPlatform.dispose(_textureId);
       }
+      if (_initializingCompleter != null &&
+          !_initializingCompleter!.isCompleted) {
+        _initializingCompleter!
+            .completeError(Exception('VideoPlayer is disposed'));
+      }
+
       _lifeCycleObserver?.dispose();
     }
     _isDisposed = true;

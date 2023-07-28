@@ -12,6 +12,7 @@ import 'test_api.g.dart';
 
 class _ApiLogger implements TestHostVideoPlayerApi {
   final List<String> log = <String>[];
+  InitializeMessage? initializeMessage;
   int? textureId;
   CreationOptions? creationOptions;
   int? position;
@@ -34,8 +35,9 @@ class _ApiLogger implements TestHostVideoPlayerApi {
   }
 
   @override
-  void initialize() {
+  void initialize(InitializeMessage arg) {
     log.add('init');
+    initializeMessage = arg;
   }
 
   @override
@@ -110,11 +112,13 @@ void main() {
     });
 
     test('init', () async {
-      await player.init();
+      await player.init(1, 1);
       expect(
         log.log.last,
         'init',
       );
+      expect(log.initializeMessage?.maxCacheSize, 1);
+      expect(log.initializeMessage?.maxCacheFileSize, 1);
     });
 
     test('dispose', () async {

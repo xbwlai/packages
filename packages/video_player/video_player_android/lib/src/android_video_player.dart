@@ -21,8 +21,9 @@ class AndroidVideoPlayer extends VideoPlayerPlatform {
   }
 
   @override
-  Future<void> init() {
-    return _api.initialize();
+  Future<void> init(int maxCacheSize, int maxCacheFileSize) {
+    return _api.initialize(InitializeMessage(
+        maxCacheSize: maxCacheSize, maxCacheFileSize: maxCacheFileSize));
   }
 
   @override

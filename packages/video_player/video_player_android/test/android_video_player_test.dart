@@ -106,7 +106,7 @@ void main() {
     });
 
     test('init', () async {
-      await player.init();
+      await player.init(1, 1);
       expect(
         log.log.last,
         'init',
