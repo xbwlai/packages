@@ -13,12 +13,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
+const int _maxCacheSizeForExample = 100 * 1024 * 1024;
+
+const int _maxCacheFileSizeForExample = 10 * 1024 * 1024;
+
 VideoPlayerPlatform? _cachedPlatform;
 
 VideoPlayerPlatform get _platform {
   if (_cachedPlatform == null) {
     _cachedPlatform = VideoPlayerPlatform.instance;
-    _cachedPlatform!.init();
+    _cachedPlatform!.init(_maxCacheSizeForExample, _maxCacheFileSizeForExample);
   }
   return _cachedPlatform!;
 }

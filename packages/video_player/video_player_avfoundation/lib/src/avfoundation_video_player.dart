@@ -21,8 +21,9 @@ class AVFoundationVideoPlayer extends VideoPlayerPlatform {
   }
 
   @override
-  Future<void> init() {
-    return _api.initialize();
+  Future<void> init(int maxCacheSize, int maxCacheFileSize) {
+    return _api.initialize(InitializeMessage(
+        maxCacheSize: maxCacheSize, maxCacheFileSize: maxCacheFileSize));
   }
 
   @override
@@ -61,6 +62,8 @@ class AVFoundationVideoPlayer extends VideoPlayerPlatform {
       httpHeaders: httpHeaders,
       formatHint: formatHint,
     );
+    message.useCache = dataSource.useCache;
+    message.cacheKey = dataSource.cacheKey;
 
     final TextureMessage response = await _api.create(message);
     return response.textureId;

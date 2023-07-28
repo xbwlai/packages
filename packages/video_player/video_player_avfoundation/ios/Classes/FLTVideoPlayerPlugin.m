@@ -11,6 +11,8 @@
 #import "AVAssetTrackUtils.h"
 #import "messages.g.h"
 
+#import "KTVHTTPCache/KTVHTTPCache.h"
+
 #if !__has_feature(objc_arc)
 #error Code Requires ARC.
 #endif
@@ -64,7 +66,8 @@
 - (instancetype)initWithURL:(NSURL *)url
                frameUpdater:(FLTFrameUpdater *)frameUpdater
                 httpHeaders:(nonnull NSDictionary<NSString *, NSString *> *)headers
-              playerFactory:(id<FVPPlayerFactory>)playerFactory;
+              playerFactory:(id<FVPPlayerFactory>)playerFactory
+                enableCache:(BOOL)enableCache;
 @end
 
 static void *timeRangeContext = &timeRangeContext;
@@ -84,7 +87,8 @@ static void *rateContext = &rateContext;
   return [self initWithURL:[NSURL fileURLWithPath:path]
               frameUpdater:frameUpdater
                httpHeaders:@{}
-             playerFactory:playerFactory];
+             playerFactory:playerFactory
+               enableCache:NO];
 }
 
 - (void)addObserversForItem:(AVPlayerItem *)item player:(AVPlayer *)player {
@@ -221,13 +225,27 @@ NS_INLINE UIViewController *rootViewController(void) {
 - (instancetype)initWithURL:(NSURL *)url
                frameUpdater:(FLTFrameUpdater *)frameUpdater
                 httpHeaders:(nonnull NSDictionary<NSString *, NSString *> *)headers
-              playerFactory:(id<FVPPlayerFactory>)playerFactory {
+              playerFactory:(id<FVPPlayerFactory>)playerFactory
+                enableCache:(BOOL)enableCache {
+  AVPlayerItem* item;
+  if (enableCache) {
+    NSURL* cacheUrl = [KTVHTTPCache proxyURLWithOriginalURL:url];
+    if (headers != nil && [headers count] != 0) {
+      [KTVHTTPCache downloadSetAdditionalHeaders:headers];
+    }
+    item = [AVPlayerItem playerItemWithURL:cacheUrl];
+  } else {
+    NSDictionary<NSString*, id>* options = nil;
+    if (headers != nil && [headers count] != 0) {
+      options = @{@"AVURLAssetHTTPHeaderFieldsKey" : headers};
+    }
+    AVURLAsset* urlAsset = [AVURLAsset URLAssetWithURL:url options:options];
+    item = [AVPlayerItem playerItemWithAsset:urlAsset];
+  }
   NSDictionary<NSString *, id> *options = nil;
   if ([headers count] != 0) {
     options = @{@"AVURLAssetHTTPHeaderFieldsKey" : headers};
   }
-  AVURLAsset *urlAsset = [AVURLAsset URLAssetWithURL:url options:options];
-  AVPlayerItem *item = [AVPlayerItem playerItemWithAsset:urlAsset];
   return [self initWithPlayerItem:item frameUpdater:frameUpdater playerFactory:playerFactory];
 }
 
@@ -556,6 +574,33 @@ NS_INLINE UIViewController *rootViewController(void) {
   FLTVideoPlayerPlugin *instance = [[FLTVideoPlayerPlugin alloc] initWithRegistrar:registrar];
   [registrar publish:instance];
   FLTAVFoundationVideoPlayerApiSetup(registrar.messenger, instance);
+
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    [FLTVideoPlayerPlugin setupHTTPCache];
+  });
+}
+
++ (void)setupHTTPCache {
+  [KTVHTTPCache logSetConsoleLogEnable:NO];
+  NSError *error = nil;
+  [KTVHTTPCache proxyStart:&error];
+  if (error) {
+    NSLog(@"Proxy Start Failure, %@", error);
+  } else {
+    NSLog(@"Proxy Start Success");
+  }
+  [KTVHTTPCache encodeSetURLConverter:^NSURL *(NSURL *URL) {
+    NSLog(@"URL Filter reviced URL : %@", URL);
+    // 视频链接带有时效参数，但视频文件是同一个，此处缓存时使用去除参数的链接作为 key。
+    // flutter 侧传入 useCache 和 cacheKey 参数，其中 cacheKey 是由视频链接去除参数后 MD5 生成。此处规则保持一致。
+    // 如需修改此处规则，注意与 flutter 侧保持一致。
+    return [NSURL URLWithString:[NSString stringWithFormat:@"%@://%@%@", [URL scheme], [URL host], [URL path]]];
+  }];
+  [KTVHTTPCache downloadSetUnacceptableContentTypeDisposer:^BOOL(NSURL *URL, NSString *contentType) {
+    NSLog(@"Unsupport Content-Type Filter reviced URL : %@, %@", URL, contentType);
+    return NO;
+  }];
 }
 
 - (instancetype)initWithRegistrar:(NSObject<FlutterPluginRegistrar> *)registrar {
@@ -598,7 +643,7 @@ NS_INLINE UIViewController *rootViewController(void) {
   return result;
 }
 
-- (void)initialize:(FlutterError *__autoreleasing *)error {
+- (void)initialize:(FLTInitializeMessage*)input error:(FlutterError *_Nullable *_Nonnull)error {
   // Allow audio playback when the Ring/Silent switch is set to silent
   [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback error:nil];
 
@@ -608,6 +653,10 @@ NS_INLINE UIViewController *rootViewController(void) {
         [player dispose];
       }];
   [self.playersByTextureId removeAllObjects];
+
+  if (input.maxCacheSize) {
+    [KTVHTTPCache cacheSetMaxCacheLength:input.maxCacheSize.longLongValue];
+  }
 }
 
 - (FLTTextureMessage *)create:(FLTCreateMessage *)input error:(FlutterError **)error {
@@ -628,7 +677,8 @@ NS_INLINE UIViewController *rootViewController(void) {
     player = [[FLTVideoPlayer alloc] initWithURL:[NSURL URLWithString:input.uri]
                                     frameUpdater:frameUpdater
                                      httpHeaders:input.httpHeaders
-                                   playerFactory:_playerFactory];
+                                   playerFactory:_playerFactory
+                                     enableCache:input.useCache];
     return [self onPlayerSetup:player frameUpdater:frameUpdater];
   } else {
     *error = [FlutterError errorWithCode:@"video_player" message:@"not implemented" details:nil];
