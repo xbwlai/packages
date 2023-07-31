@@ -18,21 +18,26 @@ export 'package:video_player_platform_interface/video_player_platform_interface.
 
 export 'src/closed_caption_file.dart';
 
-// TODO: check the logic!!!
-// VideoPlayerPlatform? _lastVideoPlayerPlatform;
+/// Cache used only for network data source.
 
-// VideoPlayerPlatform get _videoPlayerPlatform {
-//   final VideoPlayerPlatform currentInstance = VideoPlayerPlatform.instance;
-//   if (_lastVideoPlayerPlatform != currentInstance) {
-//     // This will clear all open videos on the platform when a full restart is
-//     // performed.
-//     currentInstance.init();
-//     _lastVideoPlayerPlatform = currentInstance;
-//   }
-//   return currentInstance;
-// }
+/// The maximum cache size to keep on disk in bytes.
+const int _kMaxCacheSize = 1024 * 1024 * 1024;
 
-late VideoPlayerPlatform _videoPlayerPlatform;
+/// The maximum size of each individual file in bytes.
+const int _kMaxCacheFileSize = 100 * 1024 * 1024;
+
+VideoPlayerPlatform? _lastVideoPlayerPlatform;
+
+VideoPlayerPlatform get _videoPlayerPlatform {
+  final VideoPlayerPlatform currentInstance = VideoPlayerPlatform.instance;
+  if (_lastVideoPlayerPlatform != currentInstance) {
+    // This will clear all open videos on the platform when a full restart is
+    // performed.
+    currentInstance.init(_kMaxCacheSize, _kMaxCacheFileSize);
+    _lastVideoPlayerPlatform = currentInstance;
+  }
+  return currentInstance;
+}
 
 /// The duration, current position, buffering state, error state and settings
 /// of a [VideoPlayerController].
@@ -348,12 +353,6 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
         cacheKey = null,
         super(const VideoPlayerValue(duration: Duration.zero));
 
-  /// The maximum cache size to keep on disk in bytes.
-  static int _maxCacheSize = 100 * 1024 * 1024;
-
-  /// The maximum size of each individual file in bytes.
-  static int _maxCacheFileSize = 10 * 1024 * 1024;
-
   /// The URI to the video file. This will be in different formats depending on
   /// the [DataSourceType] of the original video.
   final String dataSource;
@@ -391,7 +390,6 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
   StreamSubscription<dynamic>? _eventSubscription;
   _VideoAppLifeCycleObserver? _lifeCycleObserver;
 
-  static Completer<void>? _pluginInitializingCompleter;
   Completer<void>? _initializingCompleter;
 
   /// The id of a texture that hasn't been initialized.
@@ -404,30 +402,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
   @visibleForTesting
   int get textureId => _textureId;
 
-  /// Set the cache size in bytes. Default is maxSize of `100 * 1024 * 1024`
-  /// and maxFileSize of `10 * 1024 * 1024`.
-  ///
-  /// Cache used only for network data source.
-  ///
-  /// Throws StateError if you try to set the cache size twice. You can only set it once.
-  static void setCacheSize(int maxSize, int maxFileSize) {
-    assert(maxSize > 0);
-    assert(maxFileSize > 0);
-
-    if (_pluginInitializingCompleter != null) {
-      throw StateError(
-        "You can only set the VideoPlayerController cache size once.",
-      );
-    }
-
-    _maxCacheSize = maxSize;
-    _maxCacheFileSize = maxFileSize;
-  }
-
   /// Attempts to open the given [dataSource] and load metadata about the video.
   Future<void> initialize() async {
-    await _ensureVideoPluginInitialized();
-
     final bool allowBackgroundPlayback =
         videoPlayerOptions?.allowBackgroundPlayback ?? false;
     if (!allowBackgroundPlayback) {
@@ -540,21 +516,6 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
         .videoEventsFor(_textureId)
         .listen(eventListener, onError: errorListener);
     return _initializingCompleter!.future;
-  }
-
-  Future<void> _ensureVideoPluginInitialized() async {
-    if (_pluginInitializingCompleter != null) {
-      return _pluginInitializingCompleter!.future;
-    }
-
-    _pluginInitializingCompleter = Completer();
-
-    await VideoPlayerPlatform.instance.init(_maxCacheSize, _maxCacheFileSize);
-    _pluginInitializingCompleter!.complete(null);
-
-    _videoPlayerPlatform = VideoPlayerPlatform.instance;
-
-    return _pluginInitializingCompleter!.future;
   }
 
   @override

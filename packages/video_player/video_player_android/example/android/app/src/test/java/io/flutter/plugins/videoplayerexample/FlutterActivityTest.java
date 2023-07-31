@@ -15,6 +15,7 @@ import io.flutter.embedding.engine.FlutterEngineCache;
 import io.flutter.embedding.engine.FlutterJNI;
 import io.flutter.embedding.engine.loader.FlutterLoader;
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
+import io.flutter.plugins.videoplayer.Messages;
 import io.flutter.plugins.videoplayer.VideoPlayerPlugin;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -45,6 +46,9 @@ public class FlutterActivityTest {
 
     engine.destroy();
     verify(videoPlayerPlugin, times(1)).onDetachedFromEngine(pluginBindingCaptor.capture());
-    verify(videoPlayerPlugin, times(1)).initialize();
+    verify(videoPlayerPlugin, times(1)).initialize(
+        new Messages.InitializeMessage.Builder().setMaxCacheSize(100 * 1024 * 1024L)
+            .setMaxCacheFileSize(1024 * 1024L)
+            .build());
   }
 }

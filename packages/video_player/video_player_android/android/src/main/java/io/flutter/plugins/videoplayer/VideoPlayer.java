@@ -11,6 +11,7 @@ import android.content.Context;
 import android.net.Uri;
 import android.view.Surface;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.ExoPlayer;
@@ -21,6 +22,7 @@ import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.Player.Listener;
 import com.google.android.exoplayer2.audio.AudioAttributes;
+import com.google.android.exoplayer2.database.DatabaseProvider;
 import com.google.android.exoplayer2.source.MediaSource;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.dash.DashMediaSource;
@@ -31,9 +33,16 @@ import com.google.android.exoplayer2.source.smoothstreaming.SsMediaSource;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DefaultDataSource;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
+import com.google.android.exoplayer2.upstream.FileDataSource;
+import com.google.android.exoplayer2.upstream.cache.CacheDataSink;
+import com.google.android.exoplayer2.upstream.cache.CacheDataSource;
+import com.google.android.exoplayer2.upstream.cache.CacheKeyFactory;
+import com.google.android.exoplayer2.upstream.cache.LeastRecentlyUsedCacheEvictor;
+import com.google.android.exoplayer2.upstream.cache.SimpleCache;
 import com.google.android.exoplayer2.util.Util;
 import io.flutter.plugin.common.EventChannel;
 import io.flutter.view.TextureRegistry;
+import java.io.File;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -71,6 +80,10 @@ final class VideoPlayer {
       String dataSource,
       String formatHint,
       @NonNull Map<String, String> httpHeaders,
+      long maxCacheSize,
+      long maxCacheFileSize,
+      boolean useCache,
+      @Nullable String cacheKey,
       VideoPlayerOptions options) {
     this.eventChannel = eventChannel;
     this.textureEntry = textureEntry;
@@ -80,8 +93,15 @@ final class VideoPlayer {
     Uri uri = Uri.parse(dataSource);
 
     buildHttpDataSourceFactory(httpHeaders);
-    DataSource.Factory dataSourceFactory =
-        new DefaultDataSource.Factory(context, httpDataSourceFactory);
+
+    DataSource.Factory dataSourceFactory;
+    if (isHTTP(uri) && useCache && maxCacheSize > 0 && maxCacheFileSize > 0) {
+      dataSourceFactory =
+          new CacheDataSourceFactory(context, maxCacheSize, maxCacheFileSize, cacheKey,
+              httpDataSourceFactory);
+    } else {
+      dataSourceFactory = new DefaultDataSource.Factory(context, httpDataSourceFactory);
+    }
 
     MediaSource mediaSource = buildMediaSource(uri, dataSourceFactory, formatHint);
 
@@ -121,6 +141,14 @@ final class VideoPlayer {
     if (httpHeadersNotEmpty) {
       httpDataSourceFactory.setDefaultRequestProperties(httpHeaders);
     }
+  }
+
+  private static boolean isHTTP(Uri uri) {
+    if (uri == null || uri.getScheme() == null) {
+      return false;
+    }
+    String scheme = uri.getScheme();
+    return scheme.equals("http") || scheme.equals("https");
   }
 
   private MediaSource buildMediaSource(
@@ -337,6 +365,55 @@ final class VideoPlayer {
     }
     if (exoPlayer != null) {
       exoPlayer.release();
+    }
+  }
+
+  static class CacheDataSourceFactory implements DataSource.Factory {
+    private final Context context;
+    private final DataSource.Factory defaultDatasourceFactory;
+    private final DatabaseProvider databaseProvider;
+    private final long maxFileSize, maxCacheSize;
+
+    private final String cacheKey;
+    private static SimpleCache downloadCache;
+
+    CacheDataSourceFactory(
+        Context context,
+        long maxCacheSize,
+        long maxFileSize,
+        String cacheKey,
+        DataSource.Factory upstreamDataSource) {
+      super();
+      this.context = context;
+      this.maxCacheSize = maxCacheSize;
+      this.maxFileSize = maxFileSize;
+      this.cacheKey = cacheKey;
+      defaultDatasourceFactory = new DefaultDataSource.Factory(this.context, upstreamDataSource);
+      databaseProvider = null;
+    }
+
+    @NonNull @Override
+    public DataSource createDataSource() {
+      LeastRecentlyUsedCacheEvictor evictor = new LeastRecentlyUsedCacheEvictor(maxCacheSize);
+
+      if (downloadCache == null) {
+        downloadCache =
+            new SimpleCache(new File(context.getCacheDir(), "video"), evictor, databaseProvider,
+                null, false, true);
+      }
+      CacheKeyFactory cacheKeyFactory = null;
+      if (cacheKey != null) {
+        cacheKeyFactory = (dataSpec) -> cacheKey;
+      }
+
+      return new CacheDataSource(
+          downloadCache,
+          defaultDatasourceFactory.createDataSource(),
+          new FileDataSource(),
+          new CacheDataSink(downloadCache, maxFileSize),
+          CacheDataSource.FLAG_BLOCK_ON_CACHE | CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR,
+          null,
+          cacheKeyFactory);
     }
   }
 }

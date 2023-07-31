@@ -61,9 +61,9 @@ class AVFoundationVideoPlayer extends VideoPlayerPlatform {
       uri: uri,
       httpHeaders: httpHeaders,
       formatHint: formatHint,
+      useCache: dataSource.useCache,
+      cacheKey: dataSource.cacheKey,
     );
-    message.useCache = dataSource.useCache;
-    message.cacheKey = dataSource.cacheKey;
 
     final TextureMessage response = await _api.create(message);
     return response.textureId;

@@ -18,7 +18,7 @@ VideoPlayerPlatform? _cachedPlatform;
 VideoPlayerPlatform get _platform {
   if (_cachedPlatform == null) {
     _cachedPlatform = VideoPlayerPlatform.instance;
-    _cachedPlatform!.init();
+    _cachedPlatform!.init(1024 * 1024 * 1024, 100 * 1024 * 1024);
   }
   return _cachedPlatform!;
 }

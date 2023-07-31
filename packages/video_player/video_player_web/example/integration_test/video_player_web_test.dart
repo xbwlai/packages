@@ -35,7 +35,7 @@ void main() {
     });
 
     testWidgets('can init', (WidgetTester tester) async {
-      expect(VideoPlayerPlatform.instance.init(), completes);
+      expect(VideoPlayerPlatform.instance.init(100, 1), completes);
     });
 
     testWidgets('can create from network', (WidgetTester tester) async {

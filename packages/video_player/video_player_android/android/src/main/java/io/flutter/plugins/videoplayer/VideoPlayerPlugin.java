@@ -35,8 +35,13 @@ public class VideoPlayerPlugin implements FlutterPlugin, AndroidVideoPlayerApi {
   private FlutterState flutterState;
   private final VideoPlayerOptions options = new VideoPlayerOptions();
 
+  private long maxCacheSize;
+
+  private long maxCacheFileSize;
+
   /** Register this with the v2 embedding for the plugin to respond to lifecycle callbacks. */
-  public VideoPlayerPlugin() {}
+  public VideoPlayerPlugin() {
+  }
 
   @SuppressWarnings("deprecation")
   private VideoPlayerPlugin(io.flutter.plugin.common.PluginRegistry.Registrar registrar) {
@@ -95,7 +100,7 @@ public class VideoPlayerPlugin implements FlutterPlugin, AndroidVideoPlayerApi {
     }
     flutterState.stopListening(binding.getBinaryMessenger());
     flutterState = null;
-    initialize();
+    disposeAllPlayers();
   }
 
   private void disposeAllPlayers() {
@@ -114,10 +119,14 @@ public class VideoPlayerPlugin implements FlutterPlugin, AndroidVideoPlayerApi {
     disposeAllPlayers();
   }
 
-  public void initialize() {
+  @Override
+  public void initialize(@NonNull Messages.InitializeMessage msg) {
     disposeAllPlayers();
+    maxCacheSize = msg.getMaxCacheSize();
+    maxCacheFileSize = msg.getMaxCacheFileSize();
   }
 
+  @Override
   public @NonNull TextureMessage create(@NonNull CreateMessage arg) {
     TextureRegistry.SurfaceTextureEntry handle =
         flutterState.textureRegistry.createSurfaceTexture();
@@ -142,6 +151,10 @@ public class VideoPlayerPlugin implements FlutterPlugin, AndroidVideoPlayerApi {
               "asset:///" + assetLookupKey,
               null,
               new HashMap<>(),
+              0,
+              0,
+              false,
+              null,
               options);
     } else {
       Map<String, String> httpHeaders = arg.getHttpHeaders();
@@ -153,7 +166,12 @@ public class VideoPlayerPlugin implements FlutterPlugin, AndroidVideoPlayerApi {
               arg.getUri(),
               arg.getFormatHint(),
               httpHeaders,
-              options);
+              maxCacheSize,
+              maxCacheFileSize,
+              Boolean.TRUE.equals(arg.getUseCache()),
+              arg.getCacheKey(),
+              options
+          );
     }
     videoPlayers.put(handle.id(), player);
 
