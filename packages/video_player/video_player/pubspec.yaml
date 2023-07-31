@@ -24,14 +24,26 @@ dependencies:
   flutter:
     sdk: flutter
   html: ^0.15.0
-  video_player_android: #^2.3.5
-     path: ../video_player_android
-  video_player_avfoundation: #^2.2.17
-    path: ../video_player_avfoundation
+  video_player_android: #^2.4.9
+     git:
+       url: git@github.com:xbwlai/packages.git
+       path: packages/video_player/video_player_android
+       ref: video_player_android-v2.4.9_caching+1
+  video_player_avfoundation: #^2.4.6
+    git:
+      url: git@github.com:xbwlai/packages.git
+      path: packages/video_player/video_player_avfoundation
+      ref: video_player_avfoundation-v2.4.6_caching+1
   video_player_platform_interface: #">=6.1.0 <7.0.0"
-    path: ../video_player_platform_interface
-  video_player_web: #^2.0.0
-    path: ../video_player_web
+    git:
+      url: git@github.com:xbwlai/packages.git
+      path: packages/video_player/video_player_platform_interface
+      ref: video_player_platform_interface-v6.1.0_caching+1
+  video_player_web: #^2.0.16
+    git:
+      url: git@github.com:xbwlai/packages.git
+      path: packages/video_player/video_player_web
+      ref: video_player_web-v2.0.16_caching+1
 
 dev_dependencies:
   flutter_test:
