@@ -19,6 +19,7 @@ Downloaded by pub (not CocoaPods).
   s.osx.source_files = 'video_player_avfoundation/Sources/video_player_avfoundation_macos/*'
   s.public_header_files = 'video_player_avfoundation/Sources/video_player_avfoundation/include/**/*.h'
   s.ios.dependency 'Flutter'
+  s.ios.dependency 'KTVHTTPCache', '~> 2.0.0'
   s.osx.dependency 'FlutterMacOS'
   s.ios.deployment_target = '12.0'
   s.osx.deployment_target = '10.14'

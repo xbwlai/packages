@@ -17,6 +17,13 @@ import 'package:pigeon/pigeon.dart';
   ),
   copyrightHeader: 'pigeons/copyright.txt',
 ))
+
+class InitializeMessage {
+  InitializeMessage(this.maxCacheSize, this.maxCacheFileSize);
+  int maxCacheSize;
+  int maxCacheFileSize;
+}
+
 class CreationOptions {
   CreationOptions({required this.httpHeaders});
   String? asset;
@@ -24,6 +31,8 @@ class CreationOptions {
   String? packageName;
   String? formatHint;
   Map<String?, String?> httpHeaders;
+  bool? useCache;
+  String? cacheKey;
 }
 
 class MixWithOthersMessage {
@@ -33,8 +42,8 @@ class MixWithOthersMessage {
 
 @HostApi(dartHostTestHandler: 'TestHostVideoPlayerApi')
 abstract class AVFoundationVideoPlayerApi {
-  @ObjCSelector('initialize')
-  void initialize();
+  @ObjCSelector('initialize:')
+  void initialize(InitializeMessage msg);
   @ObjCSelector('createWithOptions:')
   // Creates a new player and returns its ID.
   int create(CreationOptions creationOptions);

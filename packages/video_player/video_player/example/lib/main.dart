@@ -223,11 +223,14 @@ class _BumbleBeeRemoteVideoState extends State<_BumbleBeeRemoteVideo> {
   @override
   void initState() {
     super.initState();
+    final String cacheKey = 'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4'.hashCode.toString();
     _controller = VideoPlayerController.networkUrl(
       Uri.parse(
-          'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4'),
+          'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4?expired=1334343'),
       closedCaptionFile: _loadCaptions(),
       videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+      useCache: true,
+      cacheKey: cacheKey,
     );
 
     _controller.addListener(() {

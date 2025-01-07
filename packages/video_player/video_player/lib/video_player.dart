@@ -24,6 +24,14 @@ export 'package:video_player_platform_interface/video_player_platform_interface.
 
 export 'src/closed_caption_file.dart';
 
+/// Cache used only for network data source.
+
+/// The maximum cache size to keep on disk in bytes.
+const int _kMaxCacheSize = 1024 * 1024 * 1024;
+
+/// The maximum size of each individual file in bytes.
+const int _kMaxCacheFileSize = 100 * 1024 * 1024;
+
 VideoPlayerPlatform? _lastVideoPlayerPlatform;
 
 VideoPlayerPlatform get _videoPlayerPlatform {
@@ -31,7 +39,7 @@ VideoPlayerPlatform get _videoPlayerPlatform {
   if (_lastVideoPlayerPlatform != currentInstance) {
     // This will clear all open videos on the platform when a full restart is
     // performed.
-    currentInstance.init();
+    currentInstance.init(_kMaxCacheSize, _kMaxCacheFileSize);
     _lastVideoPlayerPlatform = currentInstance;
   }
   return currentInstance;
@@ -278,6 +286,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
         dataSourceType = DataSourceType.asset,
         formatHint = null,
         httpHeaders = const <String, String>{},
+        useCache = false,
+        cacheKey = null,
         super(const VideoPlayerValue(duration: Duration.zero));
 
   /// Constructs a [VideoPlayerController] playing a network video.
@@ -296,6 +306,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
     Future<ClosedCaptionFile>? closedCaptionFile,
     this.videoPlayerOptions,
     this.httpHeaders = const <String, String>{},
+    this.useCache = false,
+    this.cacheKey,
   })  : _closedCaptionFileFuture = closedCaptionFile,
         dataSourceType = DataSourceType.network,
         package = null,
@@ -316,6 +328,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
     Future<ClosedCaptionFile>? closedCaptionFile,
     this.videoPlayerOptions,
     this.httpHeaders = const <String, String>{},
+    this.useCache = false,
+    this.cacheKey,
   })  : _closedCaptionFileFuture = closedCaptionFile,
         dataSource = url.toString(),
         dataSourceType = DataSourceType.network,
@@ -335,6 +349,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
         dataSourceType = DataSourceType.file,
         package = null,
         formatHint = null,
+        useCache = false,
+        cacheKey = null,
         super(const VideoPlayerValue(duration: Duration.zero));
 
   /// Constructs a [VideoPlayerController] playing a video from a contentUri.
@@ -351,6 +367,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
         package = null,
         formatHint = null,
         httpHeaders = const <String, String>{},
+        useCache = false,
+        cacheKey = null,
         super(const VideoPlayerValue(duration: Duration.zero));
 
   /// The URI to the video file. This will be in different formats depending on
@@ -373,6 +391,12 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
   /// Provide additional configuration options (optional). Like setting the audio mode to mix
   final VideoPlayerOptions? videoPlayerOptions;
 
+  /// Use cache for this data source or not. Used only for network data source.
+  final bool? useCache;
+
+  /// The cache key for this data source. Used only for network data source.
+  final String? cacheKey;
+
   /// Only set for [asset] videos. The package that the asset was loaded from.
   final String? package;
 
@@ -383,6 +407,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
   Completer<void>? _creatingCompleter;
   StreamSubscription<dynamic>? _eventSubscription;
   _VideoAppLifeCycleObserver? _lifeCycleObserver;
+
+  Completer<void>? _initializingCompleter;
 
   /// The id of a texture that hasn't been initialized.
   @visibleForTesting
@@ -418,6 +444,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
           uri: dataSource,
           formatHint: formatHint,
           httpHeaders: httpHeaders,
+          useCache: useCache,
+          cacheKey: cacheKey,
         );
       case DataSourceType.file:
         dataSourceDescription = DataSource(
@@ -440,7 +468,7 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
     _textureId = (await _videoPlayerPlatform.create(dataSourceDescription)) ??
         kUninitializedTextureId;
     _creatingCompleter!.complete(null);
-    final Completer<void> initializingCompleter = Completer<void>();
+    _initializingCompleter = Completer<void>();
 
     // Apply the web-specific options
     if (kIsWeb && videoPlayerOptions?.webOptions != null) {
@@ -466,16 +494,16 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
             isCompleted: false,
           );
           assert(
-            !initializingCompleter.isCompleted,
+            !_initializingCompleter!.isCompleted,
             'VideoPlayerController already initialized. This is typically a '
             'sign that an implementation of the VideoPlayerPlatform '
             '(${_videoPlayerPlatform.runtimeType}) has a bug and is sending '
             'more than one initialized event per instance.',
           );
-          if (initializingCompleter.isCompleted) {
+          if (_initializingCompleter!.isCompleted) {
             throw StateError('VideoPlayerController already initialized');
           }
-          initializingCompleter.complete(null);
+          _initializingCompleter!.complete(null);
           _applyLooping();
           _applyVolume();
           _applyPlayPause();
@@ -512,15 +540,15 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
       final PlatformException e = obj as PlatformException;
       value = VideoPlayerValue.erroneous(e.message!);
       _timer?.cancel();
-      if (!initializingCompleter.isCompleted) {
-        initializingCompleter.completeError(obj);
+      if (!_initializingCompleter!.isCompleted) {
+        _initializingCompleter!.completeError(obj);
       }
     }
 
     _eventSubscription = _videoPlayerPlatform
         .videoEventsFor(_textureId)
         .listen(eventListener, onError: errorListener);
-    return initializingCompleter.future;
+    return _initializingCompleter!.future;
   }
 
   @override
@@ -537,6 +565,12 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
         await _eventSubscription?.cancel();
         await _videoPlayerPlatform.dispose(_textureId);
       }
+      if (_initializingCompleter != null &&
+          !_initializingCompleter!.isCompleted) {
+        _initializingCompleter!
+            .completeError(Exception('VideoPlayer is disposed'));
+      }
+
       _lifeCycleObserver?.dispose();
     }
     _isDisposed = true;

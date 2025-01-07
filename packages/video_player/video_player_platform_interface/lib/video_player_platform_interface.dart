@@ -39,7 +39,7 @@ abstract class VideoPlayerPlatform extends PlatformInterface {
   ///
   /// This method is called when the plugin is first initialized
   /// and on every full restart.
-  Future<void> init() {
+  Future<void> init(int maxCacheSize, int maxCacheFileSize) {
     throw UnimplementedError('init() has not been implemented.');
   }
 
@@ -127,6 +127,8 @@ class DataSource {
   ///
   /// The [package] argument must be non-null when the asset comes from a
   /// package and null otherwise.
+  ///
+  /// The [useCache] argument must be non-null, default is false.
   DataSource({
     required this.sourceType,
     this.uri,
@@ -134,6 +136,8 @@ class DataSource {
     this.asset,
     this.package,
     this.httpHeaders = const <String, String>{},
+    this.useCache = false,
+    this.cacheKey,
   });
 
   /// The way in which the video was originally loaded.
@@ -163,6 +167,12 @@ class DataSource {
   /// The package that the asset was loaded from. Only set for
   /// [DataSourceType.asset] videos.
   final String? package;
+
+  /// Use cache for this data source or not. Used only for network data source.
+  final bool? useCache;
+
+  /// The cache key for this data source. Used only for network data source.
+  final String? cacheKey;
 }
 
 /// The way in which the video was originally loaded.

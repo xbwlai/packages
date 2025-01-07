@@ -29,6 +29,12 @@ class FakeController extends ValueNotifier<VideoPlayerValue>
   }
 
   @override
+  bool useCache = false;
+
+  @override
+  String cacheKey = '';
+
+  @override
   int textureId = VideoPlayerController.kUninitializedTextureId;
 
   @override
@@ -1338,7 +1344,7 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   }
 
   @override
-  Future<void> init() async {
+  Future<void> init(int maxCacheSize, int maxCacheFileSize) async {
     calls.add('init');
     initialized.complete(true);
   }

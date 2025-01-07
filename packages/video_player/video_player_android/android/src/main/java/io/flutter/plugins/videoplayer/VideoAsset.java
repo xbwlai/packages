@@ -40,8 +40,12 @@ abstract class VideoAsset {
   static VideoAsset fromRemoteUrl(
       @Nullable String remoteUrl,
       @NonNull StreamingFormat streamingFormat,
-      @NonNull Map<String, String> httpHeaders) {
-    return new HttpVideoAsset(remoteUrl, streamingFormat, new HashMap<>(httpHeaders));
+      @NonNull Map<String, String> httpHeaders,
+      long maxCacheSize,
+      long maxFileSize,
+      String cacheKey
+  ) {
+    return new HttpVideoAsset(remoteUrl, streamingFormat, new HashMap<>(httpHeaders), maxCacheSize, maxFileSize, cacheKey);
   }
 
   /**

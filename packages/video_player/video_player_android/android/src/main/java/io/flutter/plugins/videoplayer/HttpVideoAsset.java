@@ -12,11 +12,19 @@ import androidx.annotation.VisibleForTesting;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.util.UnstableApi;
+import androidx.media3.database.DatabaseProvider;
 import androidx.media3.datasource.DataSource;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.datasource.FileDataSource;
+import androidx.media3.datasource.cache.CacheDataSink;
+import androidx.media3.datasource.cache.CacheDataSource;
+import androidx.media3.datasource.cache.CacheKeyFactory;
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor;
+import androidx.media3.datasource.cache.SimpleCache;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
+import java.io.File;
 import java.util.Map;
 
 final class HttpVideoAsset extends VideoAsset {
@@ -25,14 +33,24 @@ final class HttpVideoAsset extends VideoAsset {
 
   @NonNull private final StreamingFormat streamingFormat;
   @NonNull private final Map<String, String> httpHeaders;
+  private final long maxCacheSize;
+  private final long maxFileSize;
+  private final String cacheKey;
 
   HttpVideoAsset(
       @Nullable String assetUrl,
       @NonNull StreamingFormat streamingFormat,
-      @NonNull Map<String, String> httpHeaders) {
+      @NonNull Map<String, String> httpHeaders,
+      long maxCacheSize,
+      long maxFileSize,
+      String cacheKey
+  ) {
     super(assetUrl);
     this.streamingFormat = streamingFormat;
     this.httpHeaders = httpHeaders;
+    this.maxCacheSize = maxCacheSize;
+    this.maxFileSize = maxFileSize;
+    this.cacheKey = cacheKey;
   }
 
   @NonNull
@@ -79,7 +97,8 @@ final class HttpVideoAsset extends VideoAsset {
       userAgent = httpHeaders.get(HEADER_USER_AGENT);
     }
     unstableUpdateDataSourceFactory(initialFactory, httpHeaders, userAgent);
-    DataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, initialFactory);
+    DataSource.Factory dataSourceFactory =
+        new CacheDataSourceFactory(context, maxCacheSize, maxFileSize, cacheKey, initialFactory);
     return new DefaultMediaSourceFactory(context).setDataSourceFactory(dataSourceFactory);
   }
 
@@ -92,6 +111,56 @@ final class HttpVideoAsset extends VideoAsset {
     factory.setUserAgent(userAgent).setAllowCrossProtocolRedirects(true);
     if (!httpHeaders.isEmpty()) {
       factory.setDefaultRequestProperties(httpHeaders);
+    }
+  }
+
+  @OptIn(markerClass = UnstableApi.class)
+  static class CacheDataSourceFactory implements DataSource.Factory {
+    private final Context context;
+    private final DataSource.Factory defaultDatasourceFactory;
+    private final DatabaseProvider databaseProvider;
+    private final long maxFileSize, maxCacheSize;
+
+    private final String cacheKey;
+    private static SimpleCache downloadCache;
+
+    CacheDataSourceFactory(
+        Context context,
+        long maxCacheSize,
+        long maxFileSize,
+        String cacheKey,
+        DataSource.Factory upstreamDataSource) {
+      super();
+      this.context = context;
+      this.maxCacheSize = maxCacheSize;
+      this.maxFileSize = maxFileSize;
+      this.cacheKey = cacheKey;
+      defaultDatasourceFactory = new DefaultDataSource.Factory(this.context, upstreamDataSource);
+      databaseProvider = null;
+    }
+
+    @NonNull @Override
+    public DataSource createDataSource() {
+      LeastRecentlyUsedCacheEvictor evictor = new LeastRecentlyUsedCacheEvictor(maxCacheSize);
+
+      if (downloadCache == null) {
+        downloadCache =
+            new SimpleCache(new File(context.getCacheDir(), "video"), evictor, databaseProvider,
+                null, false, true);
+      }
+      CacheKeyFactory cacheKeyFactory = null;
+      if (cacheKey != null) {
+        cacheKeyFactory = (dataSpec) -> cacheKey;
+      }
+
+      return new CacheDataSource(
+          downloadCache,
+          defaultDatasourceFactory.createDataSource(),
+          new FileDataSource(),
+          new CacheDataSink(downloadCache, maxFileSize),
+          CacheDataSource.FLAG_BLOCK_ON_CACHE | CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR,
+          null,
+          cacheKeyFactory);
     }
   }
 }

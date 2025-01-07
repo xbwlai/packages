@@ -13,6 +13,12 @@ import 'package:pigeon/pigeon.dart';
   ),
   copyrightHeader: 'pigeons/copyright.txt',
 ))
+class InitializeMessage {
+  InitializeMessage(this.maxCacheSize, this.maxCacheFileSize);
+  int maxCacheSize;
+  int maxCacheFileSize;
+}
+
 class TextureMessage {
   TextureMessage(this.textureId);
   int textureId;
@@ -49,6 +55,8 @@ class CreateMessage {
   String? packageName;
   String? formatHint;
   Map<String?, String?> httpHeaders;
+  bool? useCache;
+  String? cacheKey;
 }
 
 class MixWithOthersMessage {
@@ -58,7 +66,7 @@ class MixWithOthersMessage {
 
 @HostApi(dartHostTestHandler: 'TestHostVideoPlayerApi')
 abstract class AndroidVideoPlayerApi {
-  void initialize();
+  void initialize(InitializeMessage msg);
   TextureMessage create(CreateMessage msg);
   void dispose(TextureMessage msg);
   void setLooping(LoopingMessage msg);

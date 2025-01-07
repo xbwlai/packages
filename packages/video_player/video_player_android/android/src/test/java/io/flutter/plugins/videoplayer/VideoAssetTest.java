@@ -30,13 +30,16 @@ import org.robolectric.RobolectricTestRunner;
  * Unit tests for {@link VideoAsset}.
  *
  * <p>This test suite <em>narrowly verifies</em> that the {@link VideoAsset} factory methods, {@link
- * VideoAsset#fromRemoteUrl(String, VideoAsset.StreamingFormat, Map)} and {@link
+ * VideoAsset#fromRemoteUrl(String, VideoAsset.StreamingFormat, Map, long, long, String)} and {@link
  * VideoAsset#fromAssetUrl(String)} follow the contract they have documented.
  *
  * <p>In other tests of the player, a fake asset is likely to be used.
  */
 @RunWith(RobolectricTestRunner.class)
 public final class VideoAssetTest {
+  static final int MAX_CACHE_SIZE = 1024 * 1024 * 512;
+  static final int MAX_CACHE_FILE_SIZE = 1024 * 1024;
+
   @Test
   public void localVideoRequiresAssetUrl() {
     assertThrows(
@@ -65,7 +68,8 @@ public final class VideoAssetTest {
   public void remoteVideoByDefaultSetsUserAgentAndCrossProtocolRedirects() {
     VideoAsset asset =
         VideoAsset.fromRemoteUrl(
-            "https://flutter.dev/video.mp4", VideoAsset.StreamingFormat.UNKNOWN, new HashMap<>());
+            "https://flutter.dev/video.mp4", VideoAsset.StreamingFormat.UNKNOWN, new HashMap<>(),
+            MAX_CACHE_SIZE, MAX_CACHE_FILE_SIZE, "https://flutter.dev/video.mp4");
 
     DefaultHttpDataSource.Factory mockFactory = mockHttpFactory();
 
@@ -85,7 +89,8 @@ public final class VideoAssetTest {
 
     VideoAsset asset =
         VideoAsset.fromRemoteUrl(
-            "https://flutter.dev/video.mp4", VideoAsset.StreamingFormat.UNKNOWN, headers);
+            "https://flutter.dev/video.mp4", VideoAsset.StreamingFormat.UNKNOWN, headers,
+            MAX_CACHE_SIZE, MAX_CACHE_FILE_SIZE, "https://flutter.dev/video.mp4");
 
     DefaultHttpDataSource.Factory mockFactory = mockHttpFactory();
 
@@ -105,7 +110,8 @@ public final class VideoAssetTest {
   public void remoteVideoGetMediaSourceFactoryInProductionReturnsRealMediaSource() {
     VideoAsset asset =
         VideoAsset.fromRemoteUrl(
-            "https://flutter.dev/video.mp4", VideoAsset.StreamingFormat.UNKNOWN, new HashMap<>());
+            "https://flutter.dev/video.mp4", VideoAsset.StreamingFormat.UNKNOWN, new HashMap<>(),
+            MAX_CACHE_SIZE, MAX_CACHE_FILE_SIZE, "https://flutter.dev/video.mp4");
 
     MediaSource source =
         asset
@@ -123,7 +129,8 @@ public final class VideoAssetTest {
 
     VideoAsset asset =
         VideoAsset.fromRemoteUrl(
-            "https://flutter.dev/video.mp4", VideoAsset.StreamingFormat.UNKNOWN, headers);
+            "https://flutter.dev/video.mp4", VideoAsset.StreamingFormat.UNKNOWN, headers,
+            MAX_CACHE_SIZE, MAX_CACHE_FILE_SIZE, "https://flutter.dev/video.mp4");
 
     DefaultHttpDataSource.Factory mockFactory = mockHttpFactory();
 

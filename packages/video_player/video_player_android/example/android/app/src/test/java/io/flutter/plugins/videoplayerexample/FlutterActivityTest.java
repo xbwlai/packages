@@ -15,6 +15,7 @@ import io.flutter.embedding.engine.FlutterEngineCache;
 import io.flutter.embedding.engine.FlutterJNI;
 import io.flutter.embedding.engine.loader.FlutterLoader;
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
+import io.flutter.plugins.videoplayer.Messages;
 import io.flutter.plugins.videoplayer.VideoPlayerPlugin;
 import org.junit.Test;
 import org.junit.runner.RunWith;

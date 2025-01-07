@@ -12,6 +12,8 @@
 #import "./include/video_player_avfoundation/FVPDisplayLink.h"
 #import "./include/video_player_avfoundation/messages.g.h"
 
+#import "KTVHTTPCache/KTVHTTPCache.h"
+
 #if !__has_feature(objc_arc)
 #error Code Requires ARC.
 #endif
@@ -98,7 +100,8 @@
                 displayLink:(FVPDisplayLink *)displayLink
                 httpHeaders:(nonnull NSDictionary<NSString *, NSString *> *)headers
                   avFactory:(id<FVPAVFactory>)avFactory
-                  registrar:(NSObject<FlutterPluginRegistrar> *)registrar;
+                  registrar:(NSObject<FlutterPluginRegistrar> *)registrar
+                enableCache:(BOOL)enableCache;
 
 // Tells the player to run its frame updater until it receives a frame, regardless of the
 // play/pause state.
@@ -131,7 +134,8 @@ static void *rateContext = &rateContext;
                displayLink:displayLink
                httpHeaders:@{}
                  avFactory:avFactory
-                 registrar:registrar];
+                 registrar:registrar
+               enableCache:NO];
 }
 
 - (void)dealloc {
@@ -246,13 +250,23 @@ NS_INLINE CGFloat radiansToDegrees(CGFloat radians) {
                 displayLink:(FVPDisplayLink *)displayLink
                 httpHeaders:(nonnull NSDictionary<NSString *, NSString *> *)headers
                   avFactory:(id<FVPAVFactory>)avFactory
-                  registrar:(NSObject<FlutterPluginRegistrar> *)registrar {
-  NSDictionary<NSString *, id> *options = nil;
-  if ([headers count] != 0) {
-    options = @{@"AVURLAssetHTTPHeaderFieldsKey" : headers};
+                  registrar:(NSObject<FlutterPluginRegistrar> *)registrar
+                  enableCache:(BOOL)enableCache {
+  AVPlayerItem *item;
+  if (enableCache) {
+    NSURL* cacheUrl = [KTVHTTPCache proxyURLWithOriginalURL:url];
+    if ([headers count] != 0) {
+      [KTVHTTPCache downloadSetAdditionalHeaders:headers];
+    }
+    item = [AVPlayerItem playerItemWithURL:cacheUrl];
+  } else {
+    NSDictionary<NSString *, id> *options = nil;
+    if ([headers count] != 0) {
+      options = @{@"AVURLAssetHTTPHeaderFieldsKey" : headers};
+    }
+    AVURLAsset *urlAsset = [AVURLAsset URLAssetWithURL:url options:options];
+    item = [AVPlayerItem playerItemWithAsset:urlAsset];
   }
-  AVURLAsset *urlAsset = [AVURLAsset URLAssetWithURL:url options:options];
-  AVPlayerItem *item = [AVPlayerItem playerItemWithAsset:urlAsset];
   return [self initWithPlayerItem:item
                      frameUpdater:frameUpdater
                       displayLink:(FVPDisplayLink *)displayLink
@@ -659,6 +673,33 @@ NS_INLINE CGFloat radiansToDegrees(CGFloat radians) {
   FVPVideoPlayerPlugin *instance = [[FVPVideoPlayerPlugin alloc] initWithRegistrar:registrar];
   [registrar publish:instance];
   SetUpFVPAVFoundationVideoPlayerApi(registrar.messenger, instance);
+
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    [FVPVideoPlayerPlugin setupHTTPCache];
+  });
+}
+
++ (void)setupHTTPCache {
+  [KTVHTTPCache logSetConsoleLogEnable:NO];
+  NSError *error = nil;
+  [KTVHTTPCache proxyStart:&error];
+  if (error) {
+    NSLog(@"Proxy Start Failure, %@", error);
+  } else {
+    NSLog(@"Proxy Start Success");
+  }
+  [KTVHTTPCache encodeSetURLConverter:^NSURL *(NSURL *URL) {
+    NSLog(@"URL Filter reviced URL : %@", URL);
+    // 视频链接带有时效参数，但视频文件是同一个，此处缓存时使用去除参数的链接作为 key。
+    // flutter 侧传入 useCache 和 cacheKey 参数，其中 cacheKey 是由视频链接去除参数后 MD5 生成。此处规则保持一致。
+    // 如需修改此处规则，注意与 flutter 侧保持一致。
+    return [NSURL URLWithString:[NSString stringWithFormat:@"%@://%@%@", [URL scheme], [URL host], [URL path]]];
+  }];
+  [KTVHTTPCache downloadSetUnacceptableContentTypeDisposer:^BOOL(NSURL *URL, NSString *contentType) {
+    NSLog(@"Unsupport Content-Type Filter reviced URL : %@, %@", URL, contentType);
+    return NO;
+  }];
 }
 
 - (instancetype)initWithRegistrar:(NSObject<FlutterPluginRegistrar> *)registrar {
@@ -705,7 +746,7 @@ NS_INLINE CGFloat radiansToDegrees(CGFloat radians) {
   return textureId;
 }
 
-- (void)initialize:(FlutterError *__autoreleasing *)error {
+- (void)initialize:(FVPInitializeMessage*)input error:(FlutterError *__autoreleasing *)error {
 #if TARGET_OS_IOS
   // Allow audio playback when the Ring/Silent switch is set to silent
   [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback error:nil];
@@ -717,6 +758,10 @@ NS_INLINE CGFloat radiansToDegrees(CGFloat radians) {
         [player dispose];
       }];
   [self.playersByTextureId removeAllObjects];
+
+  if (input.maxCacheSize) {
+    [KTVHTTPCache cacheSetMaxCacheLength:input.maxCacheSize];
+  }
 }
 
 - (nullable NSNumber *)createWithOptions:(nonnull FVPCreationOptions *)options
@@ -753,7 +798,8 @@ NS_INLINE CGFloat radiansToDegrees(CGFloat radians) {
                                      displayLink:displayLink
                                      httpHeaders:options.httpHeaders
                                        avFactory:_avFactory
-                                       registrar:self.registrar];
+                                       registrar:self.registrar
+                                     enableCache:options.useCache];
     return @([self onPlayerSetup:player frameUpdater:frameUpdater]);
   } else {
     *error = [FlutterError errorWithCode:@"video_player" message:@"not implemented" details:nil];

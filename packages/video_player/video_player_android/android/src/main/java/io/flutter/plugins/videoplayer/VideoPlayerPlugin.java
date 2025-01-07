@@ -33,6 +33,10 @@ public class VideoPlayerPlugin implements FlutterPlugin, AndroidVideoPlayerApi {
   private FlutterState flutterState;
   private final VideoPlayerOptions options = new VideoPlayerOptions();
 
+  private long maxCacheSize;
+
+  private long maxCacheFileSize;
+
   /** Register this with the v2 embedding for the plugin to respond to lifecycle callbacks. */
   public VideoPlayerPlugin() {}
 
@@ -88,8 +92,11 @@ public class VideoPlayerPlugin implements FlutterPlugin, AndroidVideoPlayerApi {
     disposeAllPlayers();
   }
 
-  public void initialize() {
+  @Override
+  public void initialize(@NonNull Messages.InitializeMessage msg) {
     disposeAllPlayers();
+    maxCacheSize = msg.getMaxCacheSize();
+    maxCacheFileSize = msg.getMaxCacheFileSize();
   }
 
   public @NonNull TextureMessage create(@NonNull CreateMessage arg) {
@@ -126,7 +133,7 @@ public class VideoPlayerPlugin implements FlutterPlugin, AndroidVideoPlayerApi {
             break;
         }
       }
-      videoAsset = VideoAsset.fromRemoteUrl(arg.getUri(), streamingFormat, arg.getHttpHeaders());
+      videoAsset = VideoAsset.fromRemoteUrl(arg.getUri(), streamingFormat, arg.getHttpHeaders(), maxCacheSize, maxCacheFileSize, arg.getCacheKey());
     }
     videoPlayers.put(
         handle.id(),

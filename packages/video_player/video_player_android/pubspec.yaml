@@ -20,7 +20,11 @@ flutter:
 dependencies:
   flutter:
     sdk: flutter
-  video_player_platform_interface: ">=6.1.0 <7.0.0"
+  video_player_platform_interface: #">=6.1.0 <7.0.0"
+    git:
+      url: git@github.com:xbwlai/packages.git
+      path: packages/video_player/video_player_platform_interface
+      ref: video_player_platform_interface-v6.2.3_caching+1
 
 dev_dependencies:
   flutter_test:

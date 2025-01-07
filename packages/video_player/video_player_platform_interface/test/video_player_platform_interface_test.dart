@@ -10,7 +10,7 @@ void main() {
   final VideoPlayerPlatform initialInstance = VideoPlayerPlatform.instance;
 
   test('default implementation init throws unimplemented', () async {
-    await expectLater(() => initialInstance.init(), throwsUnimplementedError);
+    await expectLater(() => initialInstance.init(1, 1), throwsUnimplementedError);
   });
 
   test('default implementation setWebOptions throws unimplemented', () async {
