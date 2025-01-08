@@ -35,7 +35,7 @@ dependencies:
     git:
       url: git@github.com:xbwlai/packages.git
       path: packages/video_player/video_player_avfoundation
-      ref: video_player_avfoundation-v2.6.1_caching+1
+      ref: video_player_avfoundation-v2.6.1_caching+2
   video_player_platform_interface: #^6.2.0
     git:
       url: git@github.com:xbwlai/packages.git
